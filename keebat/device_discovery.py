@@ -48,6 +48,11 @@ async def find_device(
             dev_name = _variant_value(props.get("Name", ""))
             dev_connected = _variant_value(props.get("Connected", False))
 
+            log.debug(
+                "BlueZ device: %s name=%r connected=%s path=%s",
+                dev_address, dev_name, dev_connected, path,
+            )
+
             if not dev_connected:
                 continue
 
@@ -57,7 +62,12 @@ async def find_device(
             if name and dev_name and fnmatch.fnmatch(dev_name, name):
                 return path, dev_address
 
-        log.debug("Device not found (name=%s, mac=%s)", name, mac)
+        log.warning(
+            "Device not found among BlueZ objects (name=%r, mac=%r). "
+            "Check that the keyboard is connected and the name/mac in "
+            "~/.config/keebat/keebat.toml matches exactly.",
+            name, mac,
+        )
         return None
     finally:
         bus.disconnect()

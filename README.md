@@ -33,7 +33,7 @@ CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_PROXY=y
 ## Installation
 
 ```bash
-git clone <repo-url> && cd keebat
+git clone https://github.com/Uri2001/keebat.git && cd keebat
 pip install .
 ```
 
@@ -111,7 +111,9 @@ cp resources/keebat.desktop ~/.config/autostart/
 
 ## How it works
 
-1. **Device discovery** — finds the keyboard in BlueZ by name or MAC via D-Bus.
+BLE and D-Bus I/O runs in a dedicated background thread (`QThread` with its own `asyncio` event loop), keeping the Qt UI responsive and avoiding thread-safety warnings.
+
+1. **Device discovery** — finds the keyboard in BlueZ by name or MAC via D-Bus. All seen devices are logged at `DEBUG` level to help diagnose name mismatches.
 2. **D-Bus fast path** — reads `org.bluez.Battery1` interface (no explicit BLE connection needed).
 3. **GATT fallback** — if D-Bus doesn't expose both batteries, connects via `bleak` and enumerates all BLE Battery Service instances (UUID `0x180F`). The first characteristic is the central battery, the second is the peripheral battery proxied by ZMK.
 4. **Notifications + polling** — subscribes to BLE notify on battery characteristics; polls at `poll_interval` as a safety net.

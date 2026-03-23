@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from typing import Callable
 
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon, QApplication
@@ -19,7 +19,7 @@ class TrayIcon(QSystemTrayIcon):
         super().__init__(parent)
         self._config = config
         self._state = BatteryState()
-        self._refresh_callback = None
+        self._refresh_callback: Callable[[], None] | None = None
 
         self.setIcon(render_disconnected_icon())
         self.setToolTip("keebat: searching for keyboard...")
@@ -27,7 +27,8 @@ class TrayIcon(QSystemTrayIcon):
         self._build_menu()
         self.show()
 
-    def set_refresh_callback(self, callback) -> None:
+    def set_refresh_callback(self, callback: Callable[[], None]) -> None:
+        """Set a plain (non-async) callback for refresh requests."""
         self._refresh_callback = callback
 
     def _build_menu(self) -> None:
@@ -47,7 +48,7 @@ class TrayIcon(QSystemTrayIcon):
 
     def _on_refresh(self) -> None:
         if self._refresh_callback:
-            asyncio.ensure_future(self._refresh_callback())
+            self._refresh_callback()
 
     def update_battery(self, state: BatteryState) -> None:
         self._state = state

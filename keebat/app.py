@@ -1,4 +1,4 @@
-"""Application bootstrap: bridges asyncio and Qt event loops."""
+"""Application bootstrap: runs asyncio in a QThread, Qt in the main thread."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import asyncio
 import logging
 import sys
 
-import qasync
 from PyQt6.QtWidgets import QApplication
 
 from .battery_monitor import BatteryMonitor
@@ -18,7 +17,7 @@ log = logging.getLogger(__name__)
 
 def run() -> int:
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
     )
 
@@ -34,18 +33,16 @@ def run() -> int:
     app.setApplicationName("keebat")
     app.setQuitOnLastWindowClosed(False)
 
-    loop = qasync.QEventLoop(app)
-    asyncio.set_event_loop(loop)
-
-    monitor = BatteryMonitor(config)
     tray = TrayIcon(config)
+    monitor = BatteryMonitor(config)
 
     monitor.battery_updated.connect(tray.update_battery)
-    tray.set_refresh_callback(monitor.refresh)
+    tray.set_refresh_callback(monitor.request_refresh)
 
-    with loop:
-        loop.create_task(monitor.start())
-        loop.run_forever()
+    monitor.start()
 
-    monitor.stop()
-    return 0
+    ret = app.exec()
+
+    monitor.stop_monitor()
+    monitor.wait()
+    return ret
