@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
+import signal
 import sys
 
 from PyQt6.QtWidgets import QApplication
@@ -22,6 +22,7 @@ def run() -> int:
         level=getattr(logging, config.log_level.upper(), logging.WARNING),
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
     )
+
     if not config.device_name and not config.mac_address:
         log.error(
             "No device configured. Edit ~/.config/keebat/keebat.toml "
@@ -32,6 +33,10 @@ def run() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("keebat")
     app.setQuitOnLastWindowClosed(False)
+
+    # Let SIGINT (Ctrl+C) and SIGTERM quit the Qt event loop gracefully
+    signal.signal(signal.SIGINT, lambda *_: app.quit())
+    signal.signal(signal.SIGTERM, lambda *_: app.quit())
 
     tray = TrayIcon(config)
     monitor = BatteryMonitor(config)

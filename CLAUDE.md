@@ -22,9 +22,10 @@ ZMK split keyboard battery monitor — system tray app for Linux/KDE Plasma.
 
 ### Battery reading strategy
 
-1. **D-Bus GATT (primary):** enumerate all BLE Battery Service instances (UUID `0x180F`) via BlueZ `ObjectManager`, read both `0x2A19` characteristics directly through `GattCharacteristic1.ReadValue`. First = central, second = peripheral.
+1. **D-Bus GATT (primary):** `DBusBatteryReader` holds a persistent D-Bus connection, enumerates BLE Battery Service instances (UUID `0x180F`) via BlueZ `ObjectManager` once at startup, caches characteristic paths and pre-introspected interfaces, then re-uses them for every poll. First `0x2A19` = central, second = peripheral.
 2. **bleak (fallback):** direct GATT connection, same logic but via bleak client.
 3. **Do NOT rely on `org.bluez.Battery1`** — it only exposes a single battery percentage.
+4. **Do NOT re-create D-Bus connections per poll** — use a persistent `DBusBatteryReader` instance.
 
 ### Key modules
 
@@ -55,7 +56,7 @@ ZMK split keyboard battery monitor — system tray app for Linux/KDE Plasma.
 
 ## Development rules
 
-- After any code change, update all affected files (README.md, CLAUDE.md, configs, comments) in the same commit
+- After any code change, update all affected files (README.md, CLAUDE.md, CHANGELOG.md, configs, comments) in the same commit
 - Always push to GitHub after committing unless told otherwise
 - Config follows XDG: `~/.config/keebat/keebat.toml`
 - Device name in config supports glob patterns (e.g. `Corne*`)
