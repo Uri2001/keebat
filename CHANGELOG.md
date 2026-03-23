@@ -10,6 +10,7 @@
 ### Changed
 - `ble_dbus.py` rewritten as `DBusBatteryReader` class with persistent
   connection and pre-introspected interfaces.
+- Tooltip header now shows the device name instead of "keebat".
 
 ## 0.1.0
 

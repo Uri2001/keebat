@@ -69,7 +69,8 @@ class TrayIcon(QSystemTrayIcon):
         p_label = self._config.peripheral_label
         c_pct = f"{state.central_pct}%" if state.central_pct is not None else "N/A"
         p_pct = f"{state.peripheral_pct}%" if state.peripheral_pct is not None else "N/A"
-        return f"keebat\n{c_label}: {c_pct}\n{p_label}: {p_pct}"
+        title = self._config.device_name or self._config.mac_address or "keebat"
+        return f"{title}\n{c_label}: {c_pct}\n{p_label}: {p_pct}"
 
     def _check_low_battery(self, state: BatteryState) -> None:
         threshold = self._config.low_battery_threshold
