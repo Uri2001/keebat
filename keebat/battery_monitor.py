@@ -11,7 +11,7 @@ import logging
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from .ble_dbus import DBusBatteryReader
+from .ble_dbus import discover_battery_chars, read_battery_chars
 from .ble_gatt import GATTBatteryReader
 from .device_discovery import find_device
 from .models import BatteryState, DeviceConfig
@@ -30,54 +30,63 @@ class BatteryMonitor(QThread):
     def __init__(self, config: DeviceConfig, parent=None):
         super().__init__(parent)
         self._config = config
-        self._dbus_reader: DBusBatteryReader | None = None
         self._gatt_reader: GATTBatteryReader | None = None
         self._running = False
         self._backoff = BACKOFF_BASE
         self._device_path: str | None = None
         self._mac_address: str | None = None
+        self._char_paths: list[str] = []
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._stop_event: asyncio.Event | None = None
         self._refresh_event: asyncio.Event | None = None
 
     def run(self) -> None:
         """QThread entry point — creates and runs an asyncio event loop."""
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
+        self._stop_event = asyncio.Event()
         self._refresh_event = asyncio.Event()
         self._running = True
         try:
             self._loop.run_until_complete(self._monitor_loop())
+        except RuntimeError:
+            pass  # "Event loop stopped" on forced shutdown — harmless
         finally:
-            self._cleanup()
             self._loop.close()
 
     def stop_monitor(self) -> None:
+        """Thread-safe: signal the monitor loop to exit."""
         self._running = False
-        if self._loop and self._loop.is_running():
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        if self._loop and self._stop_event:
+            self._loop.call_soon_threadsafe(self._stop_event.set)
+            self._loop.call_soon_threadsafe(self._refresh_event.set)
 
     def request_refresh(self) -> None:
         """Thread-safe: request an immediate battery read from the Qt thread."""
         if self._loop and self._refresh_event:
             self._loop.call_soon_threadsafe(self._refresh_event.set)
 
-    def _cleanup(self) -> None:
-        if self._dbus_reader:
-            self._dbus_reader.disconnect()
-            self._dbus_reader = None
+    async def _wait(self, seconds: float) -> None:
+        """Sleep that can be interrupted by stop_monitor or request_refresh."""
+        self._refresh_event.clear()
+        try:
+            await asyncio.wait_for(self._refresh_event.wait(), timeout=seconds)
+        except asyncio.TimeoutError:
+            pass
 
     async def _monitor_loop(self) -> None:
         while self._running:
             try:
                 await self._discover_device()
-                await self._connect_and_monitor()
+                await self._connect_and_poll()
             except asyncio.CancelledError:
                 break
             except Exception:
+                if not self._running:
+                    break
                 log.warning("Monitor error, retrying in %ds", self._backoff, exc_info=True)
                 self.battery_updated.emit(BatteryState(connected=False))
-                self._cleanup()
-                await asyncio.sleep(self._backoff)
+                await self._wait(self._backoff)
                 self._backoff = min(self._backoff * 2, BACKOFF_MAX)
 
     async def _discover_device(self) -> None:
@@ -101,14 +110,15 @@ class BatteryMonitor(QThread):
         self._device_path, self._mac_address = result
         log.info("Found device: path=%s mac=%s", self._device_path, self._mac_address)
 
-    async def _connect_and_monitor(self) -> None:
-        # Attempt 1: D-Bus GATT (persistent connection)
-        state = await self._try_dbus_connect()
-        if state and state.central_pct is not None:
-            self._backoff = BACKOFF_BASE
-            self.battery_updated.emit(state)
-            await self._poll_dbus()
-            return
+    async def _connect_and_poll(self) -> None:
+        # Attempt 1: discover GATT chars and read via D-Bus
+        if await self._try_dbus_discover():
+            state = await self._try_dbus_read()
+            if state and state.central_pct is not None:
+                self._backoff = BACKOFF_BASE
+                self.battery_updated.emit(state)
+                await self._poll_dbus()
+                return
 
         # Attempt 2: GATT via bleak (fallback)
         state = await self._try_gatt()
@@ -120,23 +130,27 @@ class BatteryMonitor(QThread):
 
         raise RuntimeError("Could not read battery via D-Bus or GATT")
 
-    async def _try_dbus_connect(self) -> BatteryState | None:
-        """Connect D-Bus reader and do initial read."""
+    async def _try_dbus_discover(self) -> bool:
+        """Discover battery characteristic paths. Returns True if found."""
         try:
-            self._dbus_reader = DBusBatteryReader()
-            await self._dbus_reader.connect(self._device_path)
-            state = await self._dbus_reader.read_batteries()
-            # Try to subscribe for notifications
-            await self._dbus_reader.start_notify(
-                lambda s: self.battery_updated.emit(s)
-            )
-            log.debug("D-Bus read: central=%s peripheral=%s", state.central_pct, state.peripheral_pct)
+            self._char_paths = await discover_battery_chars(self._device_path)
+            if self._char_paths:
+                log.info("Found %d battery characteristic(s)", len(self._char_paths))
+                return True
+            return False
+        except Exception:
+            log.debug("D-Bus discovery failed", exc_info=True)
+            return False
+
+    async def _try_dbus_read(self) -> BatteryState | None:
+        """Read battery via D-Bus using cached char paths."""
+        try:
+            state = await read_battery_chars(self._char_paths)
+            log.debug("D-Bus read: central=%s peripheral=%s",
+                       state.central_pct, state.peripheral_pct)
             return state
         except Exception:
-            log.debug("D-Bus battery connect/read failed", exc_info=True)
-            if self._dbus_reader:
-                self._dbus_reader.disconnect()
-                self._dbus_reader = None
+            log.debug("D-Bus battery read failed", exc_info=True)
             return None
 
     async def _try_gatt(self) -> BatteryState | None:
@@ -149,7 +163,8 @@ class BatteryMonitor(QThread):
             await self._gatt_reader.subscribe(
                 lambda s: self.battery_updated.emit(s)
             )
-            log.debug("GATT read: central=%s peripheral=%s", state.central_pct, state.peripheral_pct)
+            log.debug("GATT read: central=%s peripheral=%s",
+                       state.central_pct, state.peripheral_pct)
             return state
         except Exception:
             log.debug("GATT battery read failed", exc_info=True)
@@ -159,54 +174,26 @@ class BatteryMonitor(QThread):
             return None
 
     async def _poll_dbus(self) -> None:
-        """Poll battery levels using persistent D-Bus connection."""
+        """Poll battery levels, opening a fresh D-Bus connection each time."""
         while self._running:
-            self._refresh_event.clear()
-            try:
-                await asyncio.wait_for(
-                    self._refresh_event.wait(),
-                    timeout=self._config.poll_interval,
-                )
-            except asyncio.TimeoutError:
-                pass
+            await self._wait(self._config.poll_interval)
 
             if not self._running:
                 break
 
-            if not self._dbus_reader or not self._dbus_reader.is_connected:
-                log.info("D-Bus connection lost, will reconnect")
+            state = await self._try_dbus_read()
+            if state and state.central_pct is not None:
+                self.battery_updated.emit(state)
+            else:
+                log.info("D-Bus read failed during poll, will reconnect")
                 self._device_path = None
                 self._mac_address = None
-                self._cleanup()
-                break
-
-            try:
-                state = await self._dbus_reader.read_batteries()
-                if state.central_pct is not None:
-                    self.battery_updated.emit(state)
-                else:
-                    log.info("Battery read returned None, will reconnect")
-                    self._device_path = None
-                    self._mac_address = None
-                    self._cleanup()
-                    break
-            except Exception:
-                log.warning("D-Bus poll read failed, will reconnect", exc_info=True)
-                self._device_path = None
-                self._mac_address = None
-                self._cleanup()
+                self._char_paths = []
                 break
 
     async def _poll_gatt(self) -> None:
         while self._running:
-            self._refresh_event.clear()
-            try:
-                await asyncio.wait_for(
-                    self._refresh_event.wait(),
-                    timeout=self._config.poll_interval,
-                )
-            except asyncio.TimeoutError:
-                pass
+            await self._wait(self._config.poll_interval)
 
             if not self._running:
                 break

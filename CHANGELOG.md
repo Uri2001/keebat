@@ -3,13 +3,14 @@
 ## Unreleased
 
 ### Fixed
-- Battery levels now update automatically via persistent D-Bus connection
-  with cached GATT characteristic paths (no more re-connecting per poll).
-- Graceful shutdown on Ctrl+C / SIGTERM instead of KeyboardInterrupt crash.
+- Battery levels now update on each poll cycle — char paths are discovered
+  once, then each poll opens a fresh D-Bus connection for a reliable read.
+- Graceful shutdown on Ctrl+C / SIGTERM: stop event wakes sleeping coroutines
+  so the asyncio loop exits cleanly (no more KeyboardInterrupt / core dump).
 
 ### Changed
-- `ble_dbus.py` rewritten as `DBusBatteryReader` class with persistent
-  connection and pre-introspected interfaces.
+- `ble_dbus.py` simplified to two functions: `discover_battery_chars` (once)
+  and `read_battery_chars` (per poll, fresh connection with read timeout).
 - Tooltip header now shows the device name instead of "keebat".
 
 ## 0.1.0

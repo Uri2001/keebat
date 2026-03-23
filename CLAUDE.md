@@ -22,10 +22,10 @@ ZMK split keyboard battery monitor — system tray app for Linux/KDE Plasma.
 
 ### Battery reading strategy
 
-1. **D-Bus GATT (primary):** `DBusBatteryReader` holds a persistent D-Bus connection, enumerates BLE Battery Service instances (UUID `0x180F`) via BlueZ `ObjectManager` once at startup, caches characteristic paths and pre-introspected interfaces, then re-uses them for every poll. First `0x2A19` = central, second = peripheral.
+1. **D-Bus GATT (primary):** `discover_battery_chars()` enumerates BLE Battery Service instances (UUID `0x180F`) via BlueZ `ObjectManager` once at startup and caches characteristic paths. `read_battery_chars()` opens a fresh D-Bus connection per poll, reads `0x2A19` with a 10s timeout, then disconnects. First char = central, second = peripheral.
 2. **bleak (fallback):** direct GATT connection, same logic but via bleak client.
 3. **Do NOT rely on `org.bluez.Battery1`** — it only exposes a single battery percentage.
-4. **Do NOT re-create D-Bus connections per poll** — use a persistent `DBusBatteryReader` instance.
+4. **Do NOT hold persistent dbus-fast connections** — they go stale silently. Use fresh connection per read.
 
 ### Key modules
 
