@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Keebat
+Comment=ZMK split keyboard battery monitor
+Exec=keebat
+Icon=input-keyboard
+Terminal=false
+Categories=Utility;
+X-KDE-autostart-phase=2
