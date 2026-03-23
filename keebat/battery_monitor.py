@@ -95,17 +95,15 @@ class BatteryMonitor(QThread):
         log.info("Found device: path=%s mac=%s", self._device_path, self._mac_address)
 
     async def _connect_and_monitor(self) -> None:
-        # Attempt 1: D-Bus Battery1
+        # Attempt 1: D-Bus GATT (reads both BAS characteristics directly)
         state = await self._try_dbus()
         if state and state.central_pct is not None:
             self._backoff = BACKOFF_BASE
             self.battery_updated.emit(state)
+            await self._watch_dbus_and_poll()
+            return
 
-            if state.peripheral_pct is not None:
-                await self._watch_dbus_and_poll()
-                return
-
-        # Attempt 2: GATT via bleak
+        # Attempt 2: GATT via bleak (fallback if D-Bus GATT fails)
         state = await self._try_gatt()
         if state and state.connected:
             self._backoff = BACKOFF_BASE
