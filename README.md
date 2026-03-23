@@ -98,6 +98,9 @@ peripheral_label = "Right"     # label for the peripheral half
 [ui]
 low_battery_threshold = 20     # percent — triggers warning color and notification
 notify_low_battery = true      # show desktop notification on low battery
+
+[logging]
+level = "WARNING"              # DEBUG, INFO, WARNING, ERROR (default: WARNING)
 ```
 
 ## Autostart

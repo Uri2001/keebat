@@ -16,12 +16,12 @@ log = logging.getLogger(__name__)
 
 
 def run() -> int:
+    config = load_config()
+
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=getattr(logging, config.log_level.upper(), logging.WARNING),
         format="%(asctime)s %(name)s %(levelname)s: %(message)s",
     )
-
-    config = load_config()
     if not config.device_name and not config.mac_address:
         log.error(
             "No device configured. Edit ~/.config/keebat/keebat.toml "

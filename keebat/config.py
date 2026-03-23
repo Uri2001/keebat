@@ -23,6 +23,10 @@ peripheral_label = "Right"
 [ui]
 low_battery_threshold = 20
 notify_low_battery = true
+
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR
+level = "WARNING"
 """
 
 
@@ -50,6 +54,7 @@ def load_config() -> DeviceConfig:
     dev = data.get("device", {})
     bat = data.get("battery", {})
     ui = data.get("ui", {})
+    log_section = data.get("logging", {})
 
     return DeviceConfig(
         device_name=dev.get("name"),
@@ -59,4 +64,5 @@ def load_config() -> DeviceConfig:
         peripheral_label=bat.get("peripheral_label", "Right"),
         low_battery_threshold=ui.get("low_battery_threshold", 20),
         notify_low_battery=ui.get("notify_low_battery", True),
+        log_level=log_section.get("level", "WARNING"),
     )

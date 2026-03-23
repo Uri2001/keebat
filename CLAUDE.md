@@ -59,6 +59,7 @@ ZMK split keyboard battery monitor — system tray app for Linux/KDE Plasma.
 - Always push to GitHub after committing unless told otherwise
 - Config follows XDG: `~/.config/keebat/keebat.toml`
 - Device name in config supports glob patterns (e.g. `Corne*`)
+- Log level is configurable via `[logging] level` in config (default: `WARNING`)
 
 ## Useful commands
 

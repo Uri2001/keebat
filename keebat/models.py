@@ -21,3 +21,4 @@ class DeviceConfig:
     peripheral_label: str = "Right"
     low_battery_threshold: int = 20
     notify_low_battery: bool = True
+    log_level: str = "WARNING"
